@@ -1,0 +1,72 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid":"830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "ROS: rescue",
+            "type": "ros",
+            "request": "launch",
+            "target": "/home/appuser/spot_ros2/src/colcon_ws/src/spot_rescue/launch/rescue_launch.py",
+            "preLaunchTask": "Run estop_gui",
+            "launch": [
+                "spot_rescue",
+                "spot_patrol"]
+
+        },
+        {
+            "name": "Python: rescue_patrol",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/appuser/spot_ros2/src/colcon_ws/src/spot_rescue/spot_rescue/spot_patrol.py",
+            "env": {"PYTHONPATH": "/home/appuser/spot_ros2/src/colcon_ws/src/spot_rescue/spot_patrol"},
+            "args": ["--robot",
+                        "spotty"]
+
+        },
+        {
+            "name": "Python: rescue_main",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/appuser/spot_ros2/src/colcon_ws/src/spot_rescue/spot_rescue/spot_rescue.py",
+            "env": {"PYTHONPATH": "/home/appuser/spot_ros2/src/colcon_ws/src/spot_rescue/spot_rescue"},
+            "arg": ["--robot",
+                        "spotty"],
+            "preLaunchTask": "Run estop_gui"
+
+        },
+        {
+            "name": "Python:  teleop_curses",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/appuser/spot_ros2/src/colcon_ws/src/testing/testing/teleop_curses.py",
+            "env": {"PYTHONPATH": "/home/appuser/spot_ros2/src/colcon_ws/src/testing/"},
+            "args": ["--robot",
+                    "spotty"]
+        },
+        {
+            "name": "ROS: Launch",
+            "request": "launch",
+            "target": "/home/appuser/spot_ros2/install/spot_driver/share/spot_driver/launch/spot_driver_debugable.launch.py",
+            "type": "ros",
+            "launch": [
+                "rviz",
+                "gz",
+                "gzclient",
+                "gzserver",
+                "robot_state_publisher",
+                "state_publisher_node"
+            ],
+            "arguments": [
+                "config_file:=/home/appuser/spot_ros2/src/spot_ros2/spot_driver/config/our_spotty.yaml",
+                "spot_name:=spotty",
+                "launch_rviz:=True",
+                "spot_name:=spotty",
+                "publish_point_clouds:=True",
+                "launch_rviz:=True",
+                "uncompress_images:=True",
+            ],
+        }
+    ]
+}
