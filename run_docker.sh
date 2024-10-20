@@ -53,17 +53,23 @@ else
     #runtime=nvidia tells the docker engine to use the nvidia runtime
     #sometimes GUI programs such as rviz are running faster (OpenGL on NVIDIA) with these params, but you don't need them here
     docker run \
+        --privileged \
+        --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE  --device /dev/snd \
+        -e PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native \
+        -v ${XDG_RUNTIME_DIR}/pulse/native:${XDG_RUNTIME_DIR}/pulse/native \
+        -v ~/.config/pulse/cookie:/tmp/.config/pulse/cookie \
         --env DISPLAY=${DISPLAY} \
         --env NVIDIA_VISIBLE_DEVICES=all \
         --env NVIDIA_DRIVER_CAPABILITIES=all \
         --volume /tmp/.X11-unix:/tmp/.X11-unix \
-        --volume ./src:/home/appuser/spot_ros2/src/colcon_ws/src \
-        --volume ./misc/.vscode:/home/appuser/spot_ros2/.vscode \
+        --volume ./src:/home/appuser/lumenai/src \
+        --volume ./misc/.vscode:/home/appuser/lumenai/.vscode \
         --network host \
         --interactive \
         --tty \
         --detach \
         --gpus all \
+        --ipc host \
         --runtime=nvidia \
         --name $container_name \
         $image_name:$image_tag 

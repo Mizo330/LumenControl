@@ -68,7 +68,8 @@ RUN apt-get update && \
     curl\
     gdb\
     lsb-release\
-    sudo
+    sudo &&\
+    apt-get install -y portaudio19-dev
 
 #install 
 #dependencies
@@ -108,11 +109,16 @@ ARG VSCODE_COMMIT_HASH
 RUN bash /home/appuser/lumenai/.devcontainer/preinstall_vscode.sh $VSCODE_COMMIT_HASH /home/appuser/lumenai/.devcontainer/devcontainer.json
 COPY --chown=appuser:appuser ./src /home/appuser/lumenai/src
 
+USER root
+RUN apt-get update &&\
+    apt-get install libasound-dev libportaudio2 libportaudiocpp0 portaudio19-dev -y &&\
+    apt-get install -y pulseaudio
+    
 USER appuser
-RUN python3 -m pip install tqdm && \
-    python3 -m pip install imutils && \
-    python3 -m pip install scikit-learn && \
-    python3 -m pip install pycocotools
-# RUN python3 -m pip install mediapipe
-# RUN python3 -m pip install numpy==1.26.4
-# RUN python3 -m pip install -U matplotlib
+RUN python3 -m pip install tqdm scikit-learn pyaudio&& \
+    #this is the Python Dmx control interface.
+    python3 -m pip install -U PyDMXControl  
+    #Pytorch extension for better performance
+    #python3 -m pip install natten==0.17.1+torch240cu118 -f https://shi-labs.com/natten/wheels &&\
+    #all in one music structure analizer (what a bad module name..)
+    #python3 -m pip install git+https://github.com/CPJKU/madmom  allin1
