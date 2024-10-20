@@ -54,10 +54,11 @@ else
     #sometimes GUI programs such as rviz are running faster (OpenGL on NVIDIA) with these params, but you don't need them here
     docker run \
         --privileged \
-        --cap-add=SYS_ADMIN --cap-add=SYS_PTRACE  --device /dev/snd \
-        -e PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native \
+        --device /dev/snd \
+        --env PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native \
+        --env PULSE_COOKIE=/home/appuser/.config/pulse/cookie \
         -v ${XDG_RUNTIME_DIR}/pulse/native:${XDG_RUNTIME_DIR}/pulse/native \
-        -v ~/.config/pulse/cookie:/tmp/.config/pulse/cookie \
+        -v ~/.config/pulse/cookie:/home/appuser/.config/pulse/cookie \
         --env DISPLAY=${DISPLAY} \
         --env NVIDIA_VISIBLE_DEVICES=all \
         --env NVIDIA_DRIVER_CAPABILITIES=all \

@@ -1,59 +1,51 @@
 import pyaudio
+import wave
 import numpy as np
-import torch
-import torchaudio
 
-# Parameters
-duration = 3  # Seconds to store in buffer
-sample_rate = 16000  # Hz
-channels = 1  # Mono audio
-chunk_size = 1024  # Number of frames per buffer (small chunk for faster processing)
+def record_audio(filename, duration, gain=1.0, sample_rate=44100, channels=1):
+    # Initialize PyAudio
+    audio = pyaudio.PyAudio()
 
-# Create a ring buffer to store 3 seconds of audio
-buffer_size = duration * sample_rate
-ring_buffer = np.zeros(buffer_size, dtype='float32')
+    # Open stream
+    stream = audio.open(format=pyaudio.paInt16,
+                        channels=channels,
+                        rate=sample_rate,
+                        input=True,
+                        frames_per_buffer=1024)
 
-# Initialize PyAudio
-p = pyaudio.PyAudio()
-print(p.get_host_api_info_by_index(0))
+    print("Recording...")
 
-# Define the audio stream
-stream = p.open(format=pyaudio.paFloat32,  # 32-bit float format
-                channels=channels,
-                rate=sample_rate,
-                input=True,
-                frames_per_buffer=chunk_size)
+    frames = []
 
-# Function to save the current buffer as a .wav file
-def save_audio(buffer, filename="output.wav"):
-    # Convert buffer to a PyTorch tensor
-    audio_tensor = torch.tensor(buffer).unsqueeze(0)
-    
-    # Save the audio as a WAV file using torchaudio
-    torchaudio.save(filename, audio_tensor, sample_rate)
-    print(f"Audio saved to {filename}")
-
-print("Recording... Press Ctrl+C to stop.")
-try:
-    while True:
-        # Read audio data from the microphone
-        audio_data = stream.read(chunk_size)
+    for _ in range(int(sample_rate / 1024 * duration)):
+        data = stream.read(1024)
         
-        # Convert the byte data to a numpy array
-        audio_np = np.frombuffer(audio_data, dtype='float32')
+        # Convert byte data to numpy array
+        audio_data = np.frombuffer(data, dtype=np.int16)
         
-        # Shift the buffer to the left and append the new data
-        ring_buffer = np.roll(ring_buffer, -len(audio_np))
-        ring_buffer[-len(audio_np):] = audio_np
+        # Apply gain
+        audio_data = audio_data * gain
         
-        # Optionally, save the current buffer every few seconds
-        save_audio(ring_buffer, "output.wav")
+        # Clip the values to ensure they remain within valid range
+        audio_data = np.clip(audio_data, -32768, 32767).astype(np.int16)
 
-except KeyboardInterrupt:
-    print("\nRecording stopped.")
-    
-finally:
-    # Close the stream and terminate PyAudio
+        # Convert back to bytes and store in frames
+        frames.append(audio_data.tobytes())
+
+    print("Recording finished.")
+
+    # Stop and close the stream
     stream.stop_stream()
     stream.close()
-    p.terminate()
+    audio.terminate()
+
+    # Save the recorded data as a WAV file
+    with wave.open(filename, 'wb') as wf:
+        wf.setnchannels(channels)
+        wf.setsampwidth(audio.get_sample_size(pyaudio.paInt16))
+        wf.setframerate(sample_rate)
+        wf.writeframes(b''.join(frames))
+
+# Usage example
+gain_value = 1.0  # Set gain value (e.g., 2.0 for doubling the volume)
+record_audio("output.wav", duration=5, gain=gain_value)  # Record for 5 seconds

@@ -112,12 +112,13 @@ COPY --chown=appuser:appuser ./src /home/appuser/lumenai/src
 USER root
 RUN apt-get update &&\
     apt-get install libasound-dev libportaudio2 libportaudiocpp0 portaudio19-dev -y &&\
-    apt-get install -y pulseaudio
+    apt-get install -y pulseaudio &&\
+    apt-get install -y sox libsox-fmt-all
     
 USER appuser
 RUN python3 -m pip install tqdm scikit-learn pyaudio&& \
     #this is the Python Dmx control interface.
-    python3 -m pip install -U PyDMXControl  
+    python3 -m pip install -U PyDMXControl  torchaudio
     #Pytorch extension for better performance
     #python3 -m pip install natten==0.17.1+torch240cu118 -f https://shi-labs.com/natten/wheels &&\
     #all in one music structure analizer (what a bad module name..)
