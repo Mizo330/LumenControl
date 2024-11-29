@@ -56,9 +56,9 @@ else
         --privileged \
         --device /dev/snd \
         --env PULSE_SERVER=unix:${XDG_RUNTIME_DIR}/pulse/native \
-        --env PULSE_COOKIE=/home/appuser/.config/pulse/cookie \
+        --env PULSE_COOKIE=/home/appuser/.config/pulse/cook \
         -v ${XDG_RUNTIME_DIR}/pulse/native:${XDG_RUNTIME_DIR}/pulse/native \
-        -v ~/.config/pulse/cookie:/home/appuser/.config/pulse/cookie \
+        -v /home/mizo/.config/pulse/cookie:/home/appuser/.config/pulse/cookie \
         --env DISPLAY=${DISPLAY} \
         --env NVIDIA_VISIBLE_DEVICES=all \
         --env NVIDIA_DRIVER_CAPABILITIES=all \

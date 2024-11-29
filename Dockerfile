@@ -116,10 +116,37 @@ RUN apt-get update &&\
     apt-get install -y sox libsox-fmt-all
     
 USER appuser
-RUN python3 -m pip install tqdm scikit-learn pyaudio&& \
+RUN python3 -m pip install tqdm scikit-learn&& \
     #this is the Python Dmx control interface.
-    python3 -m pip install -U PyDMXControl  torchaudio
+    python3 -m pip install -U PyDMXControl
     #Pytorch extension for better performance
     #python3 -m pip install natten==0.17.1+torch240cu118 -f https://shi-labs.com/natten/wheels &&\
     #all in one music structure analizer (what a bad module name..)
     #python3 -m pip install git+https://github.com/CPJKU/madmom  allin1
+
+USER appuser
+#RUN #cd /home/appuser/lumenai &&\
+    #git clone https://github.com/scheb/sound-to-light-osc.git &&\
+    #get dependecnies
+RUN python3 -m pip install -U\
+    Pyaudio\
+    PyQt5\
+    matplotlib\
+    scipy\
+    python-osc \
+    PythonQwt
+
+USER root
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive\
+    apt-get install -y\
+    libx11-xcb1 libxcb1 libxcb-util1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+    libxcb-randr0 libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
+    libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon0 \
+    libxkbcommon-x11-0 xvfb libgl1-mesa-glx \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+#beat this!
+USER appuser
+RUN python3 -m pip install https://github.com/CPJKU/beat_this/archive/main.zip &&\
+    python3 -m pip install -U tqdm einops soxr rotary-embedding-torch soundfile
