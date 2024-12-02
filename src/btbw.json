@@ -1,0 +1,54 @@
+{
+  "path": "/home/appuser/lumenai/src/wav/btbw.wav",
+  "bpm": null,
+  "beats": [],
+  "downbeats": [],
+  "beat_positions": [],
+  "segments": [
+    {
+      "start": 0.0,
+      "end": 7.79,
+      "label": "chorus"
+    },
+    {
+      "start": 7.79,
+      "end": 24.31,
+      "label": "chorus"
+    },
+    {
+      "start": 24.31,
+      "end": 43.31,
+      "label": "chorus"
+    },
+    {
+      "start": 43.31,
+      "end": 56.43,
+      "label": "chorus"
+    },
+    {
+      "start": 56.43,
+      "end": 117.19,
+      "label": "chorus"
+    },
+    {
+      "start": 117.19,
+      "end": 146.15,
+      "label": "chorus"
+    },
+    {
+      "start": 146.15,
+      "end": 192.52,
+      "label": "chorus"
+    },
+    {
+      "start": 192.52,
+      "end": 209.39,
+      "label": "chorus"
+    },
+    {
+      "start": 209.39,
+      "end": 209.4,
+      "label": "chorus"
+    }
+  ]
+}

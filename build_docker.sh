@@ -17,4 +17,5 @@ docker build .\
     --build-arg VSCODE_COMMIT_HASH=$VSCODE_COMMIT_HASH \
     --build-arg SUB_VERSION=$SUB_VERSION \
     --build-arg ARCH=$ARCH \
-    --build-arg BUILD_TYPE=$BUILD_TYPE
+    --build-arg BUILD_TYPE=$BUILD_TYPE \
+   --progress=plain -t $image_name

@@ -143,10 +143,34 @@ RUN apt-get update && \
     libx11-xcb1 libxcb1 libxcb-util1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
     libxcb-randr0 libxcb-render0 libxcb-render-util0 libxcb-shape0 libxcb-shm0 \
     libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxkbcommon0 \
-    libxkbcommon-x11-0 xvfb libgl1-mesa-glx \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    libxkbcommon-x11-0 xvfb libgl1-mesa-glx 
 
 #beat this!
 USER appuser
 RUN python3 -m pip install https://github.com/CPJKU/beat_this/archive/main.zip &&\
-    python3 -m pip install -U tqdm einops soxr rotary-embedding-torch soundfile
+    python3 -m pip install -U tqdm einops soxr rotary-embedding-torch soundfile librosa
+
+# Install dependencies
+USER root
+RUN apt-get update &&\
+    DEBIAN_FRONTEND=noninteractive\ 
+    apt-get install -y \
+    cmake \
+    build-essential 
+
+#natten
+
+USER appuser
+RUN cd tmp && git clone https://github.com/SHI-Labs/NATTEN && cd NATTEN && \
+    python3 -m pip install -r requirements.txt && \
+    python3 -m pip install ninja &&\
+    make CMAKE_PREFIX_PATH="/usr/local/lib/python3.10/dist-packages/torch/share/cmake" 
+# WITH_CUDA=1 CUDA_ARCH="8.0" CFLAGS="-01"
+
+#allin1 music analyzer
+USER appuser
+RUN python3 -m pip install git+https://github.com/CPJKU/madmom  &&\ 
+    python3 -m pip install allin1
+
+
+USER appuser
