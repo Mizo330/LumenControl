@@ -63,8 +63,8 @@ else
         --env NVIDIA_VISIBLE_DEVICES=all \
         --env NVIDIA_DRIVER_CAPABILITIES=all \
         --volume /tmp/.X11-unix:/tmp/.X11-unix \
-        --volume ./src:/home/appuser/lumenai/src \
-        --volume ./misc/.vscode:/home/appuser/lumenai/.vscode \
+        --volume ./src:/home/appuser/lumencontrol/src \
+        --volume ./misc/.vscode:/home/appuser/lumencontrol/.vscode \
         --network host \
         --interactive \
         --tty \
