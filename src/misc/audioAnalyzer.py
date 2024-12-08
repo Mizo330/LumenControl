@@ -17,7 +17,6 @@ def apply_filters(waveform, sample_rate):
     filters = {
         "Aluláteresztő szűrő (130 Hz)": lambda w: F.lowpass_biquad(w, sample_rate, cutoff_freq=130),
         "Sáváteresztő szűrő (260-1024 Hz)": lambda w: F.bandpass_biquad(w, sample_rate, central_freq=642, Q=1),
-        "Sáváteresztő szűrő (512-2048 Hz)": lambda w: F.bandpass_biquad(w, sample_rate, central_freq=1250, Q=1),
         "Felüláteresztő szűrő (2048 Hz)": lambda w: F.highpass_biquad(w, sample_rate, cutoff_freq=2000),
 
     }
@@ -31,8 +30,8 @@ def compute_stft(waveform, n_fft=1024, hop_length=None):
     magnitude = torch.abs(stft_result)
     return magnitude
 
-# Generalized Plotter for Features
-def plot_features_subplots(features, feature_times, duration, smoothing="moving_average", ylabel="Feature Value", deviation_window=None):
+# Generalized Plotter for Features, Z value
+def plot_features_subplots_z(features, feature_times, duration, smoothing="moving_average", ylabel="Z-Score", deviation_window=None):
     fig, axes = plt.subplots(len(features), 1, figsize=(12, 10), sharex=True)
 
     for ax, (label, feature) in zip(axes, features.items()):
@@ -44,6 +43,47 @@ def plot_features_subplots(features, feature_times, duration, smoothing="moving_
         else:
             smoothed_feature = feature  # No smoothing
 
+        # Compute rolling standard deviation and Z-score
+        if deviation_window:
+            rolling_std = np.array([
+                smoothed_feature[max(0, i - deviation_window):i + 1].std()
+                for i in range(len(smoothed_feature))
+            ])
+            z_score = np.array([
+                (feature[i] - smoothed_feature[i]) / rolling_std[i] if rolling_std[i] > 0 else 0
+                for i in range(len(feature))
+            ])
+        else:
+            z_score = np.zeros_like(feature)  # Default to zero if no deviation_window
+
+        # Plot Z-score
+        ax.plot(feature_times[: len(z_score)], z_score, label=f"{label} (Z-Score)", color="blue")
+
+        ax.set_title(label)
+        ax.set_ylabel(ylabel)
+        ax.legend()
+
+    axes[-1].set_xlabel("Idő (s)")
+    xticks = np.arange(0, duration + 1, 10)
+    for ax in axes:
+        ax.set_xticks(xticks)
+        ax.set_xlim(0, duration)
+
+    plt.tight_layout()
+    plt.show()
+    
+    # Generalized Plotter for Features
+def plot_features_subplots(features, feature_times, duration, smoothing="moving_average", ylabel="Feature Value", deviation_window=None):
+    fig, axes = plt.subplots(len(features), 1, figsize=(12, 10), sharex=True)
+
+    for ax, (label, feature) in zip(axes, features.items()):
+        # Apply smoothing
+        if smoothing == "moving_average":
+            smoothed_feature = smooth_moving_average(feature)**2
+        elif smoothing == "gaussian":
+            smoothed_feature = smooth_gaussian(feature)
+        else:
+            smoothed_feature = feature  # No smoothing
         # Plot the smoothed feature
         ax.plot(feature_times, smoothed_feature[: len(feature_times)], label=label)
         
@@ -56,10 +96,10 @@ def plot_features_subplots(features, feature_times, duration, smoothing="moving_
             ax.plot(feature_times[: len(rolling_std)], rolling_std, label=f"{label} (Szórás)", color="orange")
 
         ax.set_title(label)
-        ax.set_ylabel(ylabel)
+        ax.set_ylabel((ylabel+"^2"))
         ax.legend()
         
-    axes[-1].set_xlabel("Time (s)")
+    axes[-1].set_xlabel("Idő (s)")
     xticks = np.arange(0, duration + 1, 10)
     for ax in axes:
         ax.set_xticks(xticks)
@@ -67,7 +107,6 @@ def plot_features_subplots(features, feature_times, duration, smoothing="moving_
 
     plt.tight_layout()
     plt.show()
-
 
 # Compute Spectral Flux
 def compute_spectral_flux(magnitude_spectrogram):
@@ -88,6 +127,11 @@ def compute_rms(waveform, frame_length, hop_length):
     frames = waveform.unfold(1, frame_length, hop_length)
     rms = frames.pow(2).mean(dim=-1).sqrt()
     return rms.squeeze().numpy()
+
+def compute_rms_log(waveform, frame_length, hop_length):
+    rms = compute_rms_causal(waveform,frame_length,hop_length)
+    rms_db = 20*np.log10(rms)
+    return rms_db
 
 # Compute Root Mean Square Energy (RMS) for causal processing
 def compute_rms_causal(waveform, frame_length, hop_length):
@@ -160,13 +204,12 @@ def plot_results(times, audio_times, waveform, zcr, d_rms, flux, novelty, durati
         a.set_xticks(xticks)
         a.set_xlim(0, duration)
     
-    plt.xlabel("Time (s)")
+    plt.xlabel("Idő (s)")
     plt.tight_layout()
     plt.show()
 
 # Smoothing: Moving Average
-def smooth_moving_average(data, window_size=30):
-    print(np.shape(data))
+def smooth_moving_average(data, window_size=15):
     return np.convolve(data, np.ones(window_size) / window_size, mode="same")
 
 
@@ -214,10 +257,10 @@ def main(file_path):
     feature_times = np.linspace(0, duration, len(list(filtered_flux.values())[0]))
 
     # Plot each feature
-    plot_features_subplots(filtered_flux, feature_times, duration, smoothing="moving_average", ylabel="Spektrális fluxus",deviation_window=15)
-    plot_features_subplots(filtered_rms, feature_times[:-1], duration, smoothing="moving_average", ylabel="RMS",deviation_window=15)
-    plot_features_subplots(filtered_zcr, feature_times[:-2], duration, smoothing="moving_average", ylabel="Zéró átlépési arány (ZCR)",deviation_window=15)
-    if True: 
+    plot_features_subplots(filtered_flux, feature_times, duration, smoothing="moving_average", ylabel="Spektrális fluxus",deviation_window=None)
+    plot_features_subplots(filtered_rms, feature_times[:-1], duration, smoothing="moving_average", ylabel="RMS",deviation_window=None)
+    plot_features_subplots(filtered_zcr, feature_times[:-2], duration, smoothing="moving_average", ylabel="Zéró átlépési arány (ZCR)",deviation_window=None)
+    if False: 
         # Compute features
         flux = compute_spectral_flux(magnitude_spectrogram)
         zcr = compute_zcr(waveform, frame_length, hop_length)
@@ -245,5 +288,5 @@ def main(file_path):
 
 
 # Run the script
-file_path = "/home/appuser/lumenai/segment_avicii.wav"  # Replace with your WAV file path
+file_path = "/home/appuser/lumenai/src/segmented/segment_avicii.wav"  # Replace with your WAV file path
 main(file_path)

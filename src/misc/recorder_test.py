@@ -47,5 +47,6 @@ def record_audio(filename, duration, gain=1.0, sample_rate=44100, channels=1):
         wf.writeframes(b''.join(frames))
 
 # Usage example
-gain_value = 1.0  # Set gain value (e.g., 2.0 for doubling the volume)
-record_audio("output.wav", duration=5, gain=gain_value)  # Record for 5 seconds
+gain_value = 2.0  # Set gain value (e.g., 2.0 for doubling the volume)
+record_audio("output.wav", duration=80, gain=gain_value)  # Record for n seconds
+

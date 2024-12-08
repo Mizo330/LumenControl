@@ -1,5 +1,5 @@
 container_name="lumen"
-image_name="lumenai"
+image_name="lumencontrol"
 image_tag="latest"
 src_folder="./my_packages"
 vscode_folder="./misc/.vscode"

@@ -84,11 +84,9 @@ RUN apt-get update && \
 USER appuser
 RUN python3 -m pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
-#install for spot ros git clone https://github.com/bdaiinstitute/spot_ros2.git
-# c056c47 this is a working commit id. Might not need it...
 RUN cd /home/appuser && \
-    mkdir -p lumenai/src && \
-    mkdir -p lumenai/.vscode 
+    mkdir -p lumencontrol/src && \
+    mkdir -p lumencontrol/.vscode 
     
 
 #install vscode server and extensions inside the container
@@ -103,11 +101,11 @@ RUN apt-get update && \
     apt-get install -y\
     curl \
     jq
-COPY  --chown=appuser:appuser ./misc/.devcontainer/ /home/appuser/lumenai/.devcontainer/
+COPY  --chown=appuser:appuser ./misc/.devcontainer/ /home/appuser/lumencontrol/.devcontainer/
 USER appuser
 ARG VSCODE_COMMIT_HASH
-RUN bash /home/appuser/lumenai/.devcontainer/preinstall_vscode.sh $VSCODE_COMMIT_HASH /home/appuser/lumenai/.devcontainer/devcontainer.json
-COPY --chown=appuser:appuser ./src /home/appuser/lumenai/src
+RUN bash /home/appuser/lumencontrol/.devcontainer/preinstall_vscode.sh $VSCODE_COMMIT_HASH /home/appuser/lumencontrol/.devcontainer/devcontainer.json
+COPY --chown=appuser:appuser ./src /home/appuser/lumencontrol/src
 
 USER root
 RUN apt-get update &&\
@@ -125,9 +123,6 @@ RUN python3 -m pip install tqdm scikit-learn&& \
     #python3 -m pip install git+https://github.com/CPJKU/madmom  allin1
 
 USER appuser
-#RUN #cd /home/appuser/lumenai &&\
-    #git clone https://github.com/scheb/sound-to-light-osc.git &&\
-    #get dependecnies
 RUN python3 -m pip install -U\
     Pyaudio\
     PyQt5\
@@ -160,17 +155,17 @@ RUN apt-get update &&\
 
 #natten
 
-USER appuser
-RUN cd tmp && git clone https://github.com/SHI-Labs/NATTEN && cd NATTEN && \
-    python3 -m pip install -r requirements.txt && \
-    python3 -m pip install ninja &&\
-    make CMAKE_PREFIX_PATH="/usr/local/lib/python3.10/dist-packages/torch/share/cmake" 
-# WITH_CUDA=1 CUDA_ARCH="8.0" CFLAGS="-01"
+# USER appuser
+# RUN cd tmp && git clone https://github.com/SHI-Labs/NATTEN && cd NATTEN && \
+#     python3 -m pip install -r requirements.txt && \
+#     python3 -m pip install ninja &&\
+#     make CMAKE_PREFIX_PATH="/usr/local/lib/python3.10/dist-packages/torch/share/cmake" 
+# # WITH_CUDA=1 CUDA_ARCH="8.0" CFLAGS="-01"
 
-#allin1 music analyzer
-USER appuser
-RUN python3 -m pip install git+https://github.com/CPJKU/madmom  &&\ 
-    python3 -m pip install allin1
+# #allin1 music analyzer
+# USER appuser
+# RUN python3 -m pip install git+https://github.com/CPJKU/madmom  &&\ 
+#     python3 -m pip install allin1
 
 
 USER appuser
