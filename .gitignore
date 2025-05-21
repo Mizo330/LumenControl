@@ -1,3 +1,6 @@
 *.wav
 *.beat
 *.mp3
+*.pyc
+.params
+my_packages/Figures/*

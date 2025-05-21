@@ -1,0 +1,36 @@
+{
+    "workbench.colorCustomizations": {
+        "activityBar.activeBackground": "#9200ff",
+        "activityBar.background": "#9200ff",
+        "activityBar.foreground": "#e7e7e7",
+        "activityBar.inactiveForeground": "#e7e7e799",
+        "activityBarBadge.background": "#402400",
+        "activityBarBadge.foreground": "#e7e7e7",
+        "commandCenter.border": "#e7e7e799",
+        "sash.hoverBorder": "#9200ff",
+        "statusBar.background": "#7500cc",
+        "statusBar.foreground": "#e7e7e7",
+        "statusBarItem.hoverBackground": "#9200ff",
+        "statusBarItem.remoteBackground": "#7500cc",
+        "statusBarItem.remoteForeground": "#e7e7e7",
+        "titleBar.activeBackground": "#7500cc",
+        "titleBar.activeForeground": "#e7e7e7",
+        "titleBar.inactiveBackground": "#7500cc99",
+        "titleBar.inactiveForeground": "#e7e7e799"
+    },
+    "peacock.remoteColor": "#7500cc",
+    "python.autoComplete.extraPaths": [
+        "/home/appuser/lumencontrol/build/lumencontrol",
+        "/home/appuser/lumencontrol/install/lumencontrol/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages",
+        "/home/appuser/lumencontrol/install"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/appuser/lumencontrol/build/lumencontrol",
+        "/home/appuser/lumencontrol/install/lumencontrol/lib/python3.10/site-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages",
+        "/home/appuser/lumencontrol/install"
+    ]
+}
