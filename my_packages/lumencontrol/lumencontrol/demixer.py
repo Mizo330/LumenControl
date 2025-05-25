@@ -6,14 +6,13 @@ import torch
 import numpy as np
 import pyaudio
 import threading
-import torch  # Added import for torch
+import torch
 from collections import deque
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time
 from audio_stream_msgs.msg import AudioStream, AudioFormat
-from audio_stream_msgs.srv import GetAudioFormat
 from std_msgs.msg import Bool
 import torchaudio.functional as F
 
@@ -44,8 +43,13 @@ class Demixer(Node):
         super().__init__('demixer')
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        print(f"Using torch device {self.device} for backend torch-cuda")
-
+        self.get_logger().info(f"Using torch device {self.device} for backend torch-cuda")
+        self.format : AudioFormat = None
+        self.create_subscription(AudioFormat,"/audio/format",self.audio_format_callback,10)
+        while self.format is None:
+            rclpy.spin_once(self,timeout_sec=2)
+            self.get_logger().info("Waiting on format topic..")
+        
         # create separator only once to reduce model loading
         # when using multiple files
         self.separator = Separator.load(
@@ -58,15 +62,8 @@ class Demixer(Node):
         self.demixed_tracks = {}  # key: str, value: torch.Tensor
         self.demix_format = None  
         self.demix_index = 0      # optional, to cycle through tracks
-        self.format_client = self.create_client(GetAudioFormat,"/audio/get_format")
-        while not self.format_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Waiting for /audio/get_format service...')
-        format = self.get_audio_format()    
-        self.format = format
-        self.sample_rate = format.sample_rate
-        self.input_channels = format.channels
-        self.dtype = format.dtype
-        self.buffer = deque(maxlen= self.sample_rate * 5)
+
+        self.buffer = deque(maxlen= self.format.sample_rate * 5)
         self.lock = threading.Lock()
         
         self.create_subscription(AudioStream,"/audio/input_raw",self.audio_callback,10)
@@ -78,12 +75,15 @@ class Demixer(Node):
         self.create_timer(0.5, self.publish_demixed_estimate)
         self.create_timer(0.5, self.process_buffer)
 
+    def audio_format_callback(self,msg):
+        self.format = msg
+
     def audio_callback(self,msg:AudioStream):
         if  self.input_channels == 2:
             # Reshape to (n_frames, 2) and average across channels
-            samples = np.frombuffer(msg.data, dtype=self.dtype).reshape(-1, 2).mean(axis=1)
+            samples = np.frombuffer(msg.data, dtype=self.format.dtype).reshape(-1, 2).mean(axis=1)
         else:
-            samples = np.frombuffer(msg.data, dtype=self.dtype)
+            samples = np.frombuffer(msg.data, dtype=self.format.dtype)
         samples = samples.astype(np.float32) / 32768.0 
 
         with self.lock:
@@ -136,30 +136,6 @@ class Demixer(Node):
 
         self.publisher.publish(msg)
         self.get_logger().info(f"Published demixed track: {target}")
-    
-    def get_audio_format(self):
-        req = GetAudioFormat.Request()
-        self.future = self.format_client.call_async(req)
-        self.get_logger().info('Request sent, waiting for response...')
-
-        rclpy.spin_until_future_complete(self, self.future)
-
-        if self.future.result() is not None:
-            format_resp = self.future.result()
-            self.get_logger().info(f'Got format')
-        else:
-            self.get_logger().error('Service call failed.')
-        return format_resp.format    
-    
-    # Apply filters using torchaudio.functional
-    def apply_filters(self, waveform, sample_rate):
-        filters = {
-            "Bass": lambda w: F.lowpass_biquad(w, sample_rate, cutoff_freq=130),
-            "Lowmid": lambda w: F.bandpass_biquad(w, sample_rate, central_freq=642, Q=1),
-            "High": lambda w: F.highpass_biquad(w, sample_rate, cutoff_freq=2000),
-        }
-        filtered_waveforms = {name: filt(waveform) for name, filt in filters.items()}
-        return filtered_waveforms
     
 def main(args=None):
     rclpy.init(args=args)

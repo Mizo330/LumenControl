@@ -10,7 +10,6 @@ from rclpy import time
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time
 from audio_stream_msgs.msg import AudioStream, AudioFormat
-from audio_stream_msgs.srv import GetAudioFormat
 from std_msgs.msg import Bool
 
 class BeatDetector(Node):
@@ -18,16 +17,14 @@ class BeatDetector(Node):
     def __init__(self):
         super().__init__('beat_detector')
 
-        self.get_logger().info("Waiting for input format service..")        
-        self.format_client = self.create_client(GetAudioFormat,"/audio/get_format")
-        while not self.format_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Waiting for /audio/get_format service...')
+        self.create_subscription(AudioFormat,"/audio/format",self._audio_format_cb,10)
+
+        self.format:AudioFormat = None
+        while self.format is None:
+            rclpy.spin_once(self,timeout_sec=2)
+            self.get_logger().info("Waiting on format topic..")
         
-        format = self.get_audio_format()    
-        self.sample_rate = format.sample_rate
-        self.input_channels = format.channels
-        self.dtype = format.dtype
-        self.buffer = deque(maxlen= self.sample_rate * 5)
+        self.buffer = deque(maxlen= self.format.sample_rate * 5)
         self.current_stamp = rclpy.time.Time()
         self.last_beat = rclpy.time.Time()
         self.lock = threading.Lock()
@@ -40,11 +37,11 @@ class BeatDetector(Node):
         self.create_timer(0.05, self.process_buffer)
         
     def audio_callback(self,msg:AudioStream):
-        if  self.input_channels == 2:
+        if self.format.channels == 2:
             # Reshape to (n_frames, 2) and average across channels
-            samples = np.frombuffer(msg.data, dtype=self.dtype).reshape(-1, 2).mean(axis=1)
+            samples = np.frombuffer(msg.data, dtype=self.format.dtype).reshape(-1, 2).mean(axis=1)
         else:
-            samples = np.frombuffer(msg.data, dtype=self.dtype)
+            samples = np.frombuffer(msg.data, dtype=self.format.dtype)
         samples = samples.astype(np.float32) / 32768.0 
             
         with self.lock:
@@ -59,7 +56,7 @@ class BeatDetector(Node):
             current_stamp = self.current_stamp
 
         start = self.get_clock().now()
-        beats, upbeats = self.beatThis(buffer_copy, self.sample_rate)
+        beats, upbeats = self.beatThis(buffer_copy, self.format.sample_rate)
         delta = self.get_clock().now() - start
         is_new_beat = self.filter_for_new_beat(beats,current_stamp)
         self.get_logger().debug(f"Beat processing time: {delta} s")
@@ -89,19 +86,8 @@ class BeatDetector(Node):
 
         return False
             
-    def get_audio_format(self):
-        req = GetAudioFormat.Request()
-        self.future = self.format_client.call_async(req)
-        self.get_logger().info('Request sent, waiting for response...')
-
-        rclpy.spin_until_future_complete(self, self.future)
-
-        if self.future.result() is not None:
-            format_resp = self.future.result()
-            self.get_logger().info(f'Got format')
-        else:
-            self.get_logger().error('Service call failed.')
-        return format_resp.format    
+    def _audio_format_cb(self, msg: AudioFormat):
+        self.format = msg
     
 def main(args=None):
     rclpy.init(args=args)

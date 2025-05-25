@@ -75,6 +75,7 @@ else
         --env PULSE_COOKIE=/home/appuser/.config/pulse/cookie \
         -v ${XDG_RUNTIME_DIR}/pulse/native:${XDG_RUNTIME_DIR}/pulse/native \
         -v $HOME/.config/pulse/cookie:/home/appuser/.config/pulse/cookie \
+        -v /dev/bus/usb:/dev/bus/usb \
         --env DISPLAY=${DISPLAY} \
         --env NVIDIA_VISIBLE_DEVICES=all \
         --env NVIDIA_DRIVER_CAPABILITIES=all \

@@ -25,7 +25,9 @@ setup(
     entry_points={
         'console_scripts': [
             'beat_detector = lumencontrol.beat_detector:main',
-            'demixer = lumencontrol.demixer:main'
+            'demixer = lumencontrol.demixer:main',
+            'filtering = lumencontrol.filtering:main',
+            'features = lumencontrol.feature_extractor:main'
         ],
     },
 )
