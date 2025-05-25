@@ -28,6 +28,7 @@ setup(
             'recorder = audio_stream_tools.audio_recorder_node:main',
             'input =  audio_stream_tools.audio_input_node:main',
             'output = audio_stream_tools.audio_output_node:main',
+            'listener_gui = audio_stream_tools.audio_listener_gui:main',
         ],
     },
 )

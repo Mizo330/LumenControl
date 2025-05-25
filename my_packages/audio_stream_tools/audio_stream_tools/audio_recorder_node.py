@@ -12,7 +12,6 @@ class AudioRecorder(Node):
             '/audio/input_raw',
             self.listener_callback,
             10)
-        self.subscription  # prevent unused variable warning
 
         # Audio parameters (adjust as needed)
         self.sample_rate = 44100  # Hz

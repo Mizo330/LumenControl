@@ -1,7 +1,0 @@
-# GetAudioFormat.srv
-
-# Request – empty
----
-
-# Response
-AudioFormat format

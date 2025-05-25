@@ -1,46 +1,52 @@
 import rclpy
 from rclpy.node import Node
 from audio_stream_msgs.msg import AudioStream, AudioFormat
-from audio_stream_msgs.srv import GetAudioFormat
 import pyaudio
 import numpy as np
 from audio_stream_tools.helpers import NP_DTYPE_TO_PYAUDIO
+from rcl_interfaces.srv import GetParameters
+from rcl_interfaces.msg import SetParametersResult
+from std_msgs.msg import Float32
 
 class AudioOutputNode(Node):
     def __init__(self):
-        super().__init__('audio_output_node')
-
-        self.get_logger().info("Waiting for input format service..")        
-        self.format_client = self.create_client(GetAudioFormat,"/audio/get_format")
-        while not self.format_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Waiting for /audio/get_format service...')
+        super().__init__('audio_output')
+        self.declare_parameter("input_topic", "audio/filtered/bass")
         
-        format = self.get_audio_format()    
-        
+        self.add_on_set_parameters_callback(self._input_topic_changed)
         self.p = pyaudio.PyAudio()
+        self.stream = None
+        self.format = None
+        self.create_subscription(AudioFormat,"/audio/format",self._audio_format_cb,10)
+        self.gain = 0.8
         
-        self.stream = self.p.open(
-            format=NP_DTYPE_TO_PYAUDIO[format.dtype],
-            channels=format.channels,
-            rate=format.sample_rate,
-            output=True,
-            frames_per_buffer=format.frame_size
-        )
-
+        while self.format is None:
+            rclpy.spin_once(self,timeout_sec=2)
+            self.get_logger().info("Waiting on format topic..")
+        
+        self.create_subscription(Float32,"/audio/output_gain",self.gain_cb,10)
+        
         self.subscription = self.create_subscription(
             AudioStream,
-            '/demixed_audio',
-            self.callback,
+            self.get_parameter("input_topic").value,
+            self.audio_callback,
             10
         )
         self.get_logger().info("AudioOutputNode started. Listening for audio...")
 
-    def callback(self, msg: AudioStream):
-        # Convert list of uint8 to bytes
-        audio_bytes = bytes(msg.data)
+    def gain_cb(self,msg:Float32):
+        self.gain = msg.data
 
-        # Play audio to output stream
-        self.stream.write(audio_bytes)
+    def audio_callback(self, msg: AudioStream):
+        audio_bytes = bytes(msg.data)
+        # Convert to NumPy array (assuming 16-bit signed int PCM)
+        audio_np = np.frombuffer(audio_bytes, dtype=np.int16)
+
+        # Apply gain
+        audio_np = (audio_np * self.gain).astype(np.int16)
+
+        # Convert back to bytes and write to output stream
+        self.stream.write(audio_np.tobytes())
 
     def destroy_node(self):
         self.get_logger().info("Shutting down audio output.")
@@ -49,19 +55,32 @@ class AudioOutputNode(Node):
         self.p.terminate()
         super().destroy_node()
 
-    def get_audio_format(self):
-        req = GetAudioFormat.Request()
-        self.future = self.format_client.call_async(req)
-        self.get_logger().info('Request sent, waiting for response...')
+    def _input_topic_changed(self,params):
+        for param in params:
+            if param.name == 'input_topic':
+                self.get_logger().info(f"Changing to {param.value}")
+                self.destroy_subscription(self.subscription)
+                self.subscription = self.create_subscription(
+                    AudioStream,
+                    param.value,
+                    self.audio_callback,
+                    10
+                )
+        
+        return SetParametersResult(successful=True)
 
-        rclpy.spin_until_future_complete(self, self.future)
-
-        if self.future.result() is not None:
-            format_resp = self.future.result()
-            self.get_logger().info(f'Got format')
-        else:
-            self.get_logger().error('Service call failed.')
-        return format_resp.format
+    def _audio_format_cb(self, msg: AudioFormat):
+        if msg != self.format:
+            self.format = msg
+            if self.stream:
+                self.stream.close()
+            self.stream = self.p.open(
+                format=NP_DTYPE_TO_PYAUDIO[self.format.dtype],
+                channels=self.format.channels,
+                rate=self.format.sample_rate,
+                output=True,
+                frames_per_buffer=self.format.frame_size
+            )
     
 def main(args=None):
     rclpy.init(args=args)

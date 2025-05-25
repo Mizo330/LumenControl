@@ -16,7 +16,7 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/AudioFormat.msg"
   "msg/AudioStream.msg"
-  "srv/GetAudioFormat.srv"
+  "srv/AudioPlaybackControl.srv"
   DEPENDENCIES
     builtin_interfaces
 )
