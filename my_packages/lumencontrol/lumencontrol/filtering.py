@@ -16,9 +16,24 @@ import torchaudio.sox_effects as sox
 from collections import defaultdict
 import soundfile as sf
 import torchaudio.functional as F
+
 class Filterer(Node):
     def __init__(self):
         super().__init__('demixer')
+        
+        #declare and get params for the filters..
+        self.declare_parameter("filter_names", ['Bass', 'Mid', 'High'])
+        self.declare_parameter("filter_frequencies", [80, 1000, 5000])
+        self.declare_parameter("filter_gains", [1.0, 1.0, 2.0])
+        
+        names = self.get_parameter("filter_names").get_parameter_value().string_array_value
+        freqs = self.get_parameter("filter_frequencies").get_parameter_value().integer_array_value
+        gains = self.get_parameter("filter_gains").get_parameter_value().double_array_value
+
+        self.filter_defs = {
+            name: {"f": f, "gain": g}
+            for name, f, g in zip(names, freqs, gains)
+        }
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.get_logger().info(f"Using torch device {self.device} for backend torch-cuda")
@@ -31,16 +46,37 @@ class Filterer(Node):
         
         self.create_subscription(AudioStream,"/audio/input_raw",self.audio_callback,10)
         
-        self.bass_publisher = self.create_publisher(AudioStream, "/audio/filtered/bass", 10)
-        self.lowmid_publisher = self.create_publisher(AudioStream, "/audio/filtered/lowmid", 10)
-        self.high_publisher = self.create_publisher(AudioStream, "/audio/filtered/high", 10)
-        # Publish to corresponding topic
-        self.publisher_map = {
-            "Bass": self.bass_publisher,
-            "Lowmid": self.lowmid_publisher,
-            "High": self.high_publisher,
-        }
-        self.get_logger().info("Init done")
+        # Sorted bands by central frequency
+        self.bands = sorted(self.filter_defs.items(), key=lambda x: x[1]['f'])
+
+        self.filters = {}
+        self.publisher_map = {}
+
+        for i, (name, params) in enumerate(self.bands):
+            fc = params['f']
+            gain = params.get('gain', 1.0)
+
+            if i == 0:
+                # Lowpass
+                cutoff = (fc + self.bands[i + 1][1]['f']) / 2
+                self.filters[name] = lambda w, c=cutoff, g=gain: g * F.lowpass_biquad(w, self.format.sample_rate, cutoff_freq=c, Q=1.5)
+            elif i == len(self.bands) - 1:
+                # Highpass
+                cutoff = (fc + self.bands[i - 1][1]['f']) / 2
+                self.filters[name] = lambda w, c=cutoff, g=gain: g * F.highpass_biquad(w,  self.format.sample_rate, cutoff_freq=c, Q=1.5)
+            else:
+                # Bandpass
+                f_prev = self.bands[i - 1][1]['f']
+                f_next = self.bands[i + 1][1]['f']
+                bandwidth = f_next - f_prev
+                Q = fc / bandwidth
+                self.filters[name] = lambda w, f=fc, q=Q, g=gain: g * F.bandpass_biquad(w,  self.format.sample_rate, central_freq=f, Q=q)
+
+            # Create ROS publisher
+            topic_name = f"/audio/filtered/{name.lower()}"
+            self.publisher_map[name] = self.create_publisher(AudioStream, topic_name, 10)
+            
+        self.get_logger().info(f"Init done,")
         self.filtered_buffers = defaultdict(list)  # at init
         
     def audio_format_callback(self, msg):
@@ -90,15 +126,8 @@ class Filterer(Node):
         # create a Hann window
         window = torch.hann_window(N, device=waveform.device)
 
-        # your filter definitions
-        filters = {
-            "Bass":     lambda w: F.lowpass_biquad(w, sample_rate, cutoff_freq=130),
-            "Lowmid":   lambda w: F.bandpass_biquad(w, sample_rate, central_freq=642, Q=1),
-            "High":     lambda w: F.highpass_biquad(w, sample_rate, cutoff_freq=3000),
-        }
-
         out = {}
-        for name, filt in filters.items():
+        for name, filt in self.filters.items():
             # apply filter, then window
             w = filt(waveform.clone())
             w = w * window.unsqueeze(0)  # multiply each frame by the window

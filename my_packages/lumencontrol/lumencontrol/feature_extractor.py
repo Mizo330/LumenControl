@@ -3,81 +3,143 @@ import numpy as np
 import torch 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Header
 from audio_stream_msgs.msg import AudioStream, AudioFormat
 import torchaudio.sox_effects as sox
-import soundfile as sf
 import torch.nn.functional as nnF
 import librosa
+from collections import deque
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
+from lumen_msgs.msg import AudioFeatures
+from std_msgs.msg import Int16
 
 class FeatureExtractor(Node):
     def __init__(self):
         super().__init__('demixer')
 
+        #declare and get params for the filters..
+        #TODO instead of declaring, get it from the filtering node with param.get
+        self.declare_parameter("filter_names", ['Bass', 'Mid', 'High'])
+        self.declare_parameter("filter_frequencies", [80, 1000, 5000])
+        self.declare_parameter("filter_gains", [1.0, 1.0, 2.0])
+        
+        names = self.get_parameter("filter_names").get_parameter_value().string_array_value
+        freqs = self.get_parameter("filter_frequencies").get_parameter_value().integer_array_value
+        gains = self.get_parameter("filter_gains").get_parameter_value().double_array_value
+
+        self.filter_defs = {
+            name: {"f": f, "gain": g}
+            for name, f, g in zip(names, freqs, gains)
+        }
+
+
         self.create_subscription(AudioFormat,"/audio/format",self._audio_format_cb,10)
-        self.format:AudioFormat = None
+        self.format = None
         while self.format is None:
             rclpy.spin_once(self,timeout_sec=2)
             self.get_logger().info("Waiting on format topic..")
 
         self.callback_group = ReentrantCallbackGroup()
-        self.create_subscription(AudioStream, "/audio/filtered/high",self.process_high, 10,callback_group=self.callback_group)
-        self.create_subscription(AudioStream, "/audio/filtered/lowmid",self.process_mid, 10,callback_group=self.callback_group)
-        self.create_subscription(AudioStream, "/audio/filtered/bass",self.process_bass, 10,callback_group=self.callback_group)
-      
+        
+        self.current_bpm = 120
+        self.create_subscription(AudioStream, "/audio/bpm",self.bpm_cb, 10,callback_group=self.callback_group)
+                
+        self.audio_subscribers = {}
+        self.audio_subscriber_cbs = {}
+        self.featue_publishers = {}
+        self.rms_history = {}
+        self.zcr_history = {}
+        self.rms_smoothed_history = {}
+        self.zcr_smoothed_history = {}
+        
+        #Create all subs, pubs and containers from the filter definitions
+        for name in self.filter_defs:
+            
+            self.featue_publishers[name] = self.create_publisher(
+                AudioFeatures,
+                f"/features/{name.lower()}",
+                10,
+                callback_group=self.callback_group
+            )
+            
+            # Define callback inside a function to capture 'name'
+            def make_callback(filter_name):
+                def callback(msg):
+                    # Process msg here
+                    feature_msg = self.get_features(msg.data, filter_name)
+                    self.featue_publishers[filter_name].publish(feature_msg)
+                return callback
+
+            callback_fn = make_callback(name)
+            self.audio_subscribers[name] = self.create_subscription(
+                AudioStream,
+                f"/audio/filtered/{name.lower()}",
+                callback_fn,
+                10,
+                callback_group=self.callback_group
+            )
+            self.audio_subscriber_cbs[name] = callback_fn
+            
+            self.rms_history[name] = deque(maxlen=1000)
+            self.zcr_history[name] = deque(maxlen=1000)
+            self.rms_smoothed_history[name] = deque(maxlen=1000)
+            self.zcr_smoothed_history[name] = deque(maxlen=1000)
+
+        self.get_logger().info("Init done")
+        
     def _audio_format_cb(self, msg: AudioFormat):
         self.format = msg  
-        
-    def process_high(self,msg:AudioStream):
-        zcr, rms = self.get_features(msg.data)
-        self.get_logger().info(f"ZCR:{zcr},RMS:{rms}")
-        
-    def process_mid(self,msg):
-        zcr, rms = self.get_features(msg.data)
-        
-    def process_bass(self,msg):
-        zcr, rms = self.get_features(msg.data)
+    
+    def bpm_cb(self,msg:Int16):
+        self.current_bpm = msg.data
 
-    def get_features(self,data):
+    def get_features(self,data,band):
         if self.format.channels == 2:
         # Reshape to (n_frames, 2) and average channels
             samples = np.frombuffer(data, dtype=self.format.dtype).reshape(-1, 2).mean(axis=1)
         else:
             samples = np.frombuffer(data, dtype=self.format.dtype)
 
-        # Normalize samples to float32 in [-1,1]
         samples = samples.astype(np.float32) / 32768.0
 
-        # Compute RMS
         rms = np.sqrt(np.mean(samples**2))
 
-        # Zero Crossing Rate (ZCR) calculation
-        samples_tensor = torch.from_numpy(samples)  # Convert to tensor
-        samples_tensor = samples_tensor.float()
-
-        waveform_shifted = samples_tensor[1:]
-        zero_crossings = ((samples_tensor[:-1] * waveform_shifted) < 0).float()
-
-        # Reshape zero_crossings to (N=1, C=1, L)
-        zero_crossings = zero_crossings.unsqueeze(0).unsqueeze(0)
-
-        input_length = zero_crossings.shape[-1]
-        frame_size = self.format.frame_size
-        stride = frame_size // 2
-
-        if frame_size > input_length:
-            # Option 1: Pad zero_crossings to frame_size length
-            pad_amount = frame_size - input_length
-            zero_crossings = torch.nn.functional.pad(zero_crossings, (0, pad_amount))
-
-
-        # Apply avg_pool1d
-        zcr = nnF.avg_pool1d(zero_crossings, kernel_size=frame_size, stride=stride).squeeze()
+        zcr = np.mean(np.abs(np.diff(np.sign(samples)))) / 2
+        zcr = zcr*10
         
-        return zcr,rms
+        self.rms_history[band].append(rms)
+        self.zcr_history[band].append(zcr)
+        
+        #smooth features
+        avg_size = round((60 / self.current_bpm) * (self.format.sample_rate / self.format.frame_size))
+        rms_array = np.fromiter(self.rms_history[band], dtype=np.float32)
+        rms_smoothed = rms_array[-avg_size:].mean() 
+        zcr_array = np.fromiter(self.zcr_history[band], dtype=np.float32)
+        zcr_smoothed = zcr_array[-avg_size:].mean() 
+        
+        self.rms_smoothed_history[band].append(rms_smoothed)
+        self.zcr_smoothed_history[band].append(zcr_smoothed)
+        
+        rms_s_array = np.fromiter(self.rms_smoothed_history[band], dtype=np.float32)
+        rms_z_score = self.get_z_score(rms_smoothed,rms_s_array)
+        
+        zcr_s_array = np.fromiter(self.zcr_smoothed_history[band], dtype=np.float32)
+        zcr_z_score = self.get_z_score(zcr_smoothed,zcr_s_array)
+                
+        features = AudioFeatures(rms = float(rms_smoothed),
+                                 zcr=float(zcr_smoothed),
+                                 rms_z_score=float(rms_z_score),
+                                 zcr_z_score=float(zcr_z_score))
+        return features
     
+    def get_z_score(self,val, arr):
+        if len(arr) < 2:
+            return 0.0
+        std = np.std(arr)
+        if not np.isfinite(std) or std < 1e-6:
+            return 0.0
+        return (val - np.mean(arr)) / std
+
 def main(args=None):
     rclpy.init()
     executor = MultiThreadedExecutor()
@@ -87,8 +149,6 @@ def main(args=None):
     try:
         executor.spin()
     except KeyboardInterrupt:
-        pass
-    finally:
         node.destroy_node()
         executor.shutdown()
 

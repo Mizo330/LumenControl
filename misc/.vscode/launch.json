@@ -4,5 +4,19 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid":"830387
     "version": "0.2.0",
     "configurations": [
+
+        {
+            "name": "Python: Filterer debug",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/appuser/lumencontrol/src/my_packages/lumencontrol/lumencontrol/filtering.py"
+        },
+
+        {
+            "name": "Python: Feature_ext debug",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/appuser/lumencontrol/src/my_packages/lumencontrol/lumencontrol/feature_extractor.py"
+        },
     ]
 }

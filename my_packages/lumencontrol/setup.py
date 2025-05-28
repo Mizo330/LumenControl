@@ -12,8 +12,8 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-         # Include all launch files.
-        (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*launch.[pxy][yma]*'))),
+        ('share/' + package_name + '/launch', glob('launch/*launch.[pxy][yma]*')), #launchfiles
+        ('share/' + package_name + '/config', glob('config/*')), #config files
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -27,7 +27,9 @@ setup(
             'beat_detector = lumencontrol.beat_detector:main',
             'demixer = lumencontrol.demixer:main',
             'filtering = lumencontrol.filtering:main',
-            'features = lumencontrol.feature_extractor:main'
+            'features = lumencontrol.feature_extractor:main',
+            'gui = lumencontrol.gui:main',
+            'spectral_analyzer = lumencontrol.spectral_analyzer:main',
         ],
     },
 )

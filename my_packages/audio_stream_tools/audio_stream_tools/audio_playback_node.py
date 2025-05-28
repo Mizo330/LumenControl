@@ -9,11 +9,12 @@ import pyaudio
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.parameter import Parameter
 from audio_stream_tools.helpers import NP_DTYPE_TO_PYAUDIO
+import soundfile as sf
 
 class AudioPlaybackNode(Node):
     def __init__(self, wav_path, loop=False):
         super().__init__('audio_playback')
-        self.declare_parameter('audio_path',"/home/appuser/lumencontrol/src/my_packages/wav/On The Drums.wav")
+        self.declare_parameter('audio_path',"/home/appuser/lumencontrol/src/my_packages/wav/olds_004.wav")
         
         self.add_on_set_parameters_callback(self.path_changed_cb)
         
@@ -38,16 +39,15 @@ class AudioPlaybackNode(Node):
         if self.timer is not None:
             self.timer.cancel()
 
-        self.wf = wave.open(audio_path, 'rb')
-        self.sampwidth = self.wf.getsampwidth()
-    
-        if self.sampwidth != 2:
+        self.wf = sf.SoundFile(audio_path)
+
+        if self.wf.subtype != 'PCM_16':
             self.get_logger().error("Only 16-bit PCM WAV files are supported.")
             raise RuntimeError("Unsupported WAV sample width")
         
         format_temp = self.format
-        format_temp.sample_rate = self.wf.getframerate()
-        format_temp.channels = self.wf.getnchannels()
+        format_temp.sample_rate = self.wf.samplerate
+        format_temp.channels = self.wf.channels
         self.timer_period = format_temp.frame_size / format_temp.sample_rate
         
         self.format = format_temp
@@ -60,11 +60,11 @@ class AudioPlaybackNode(Node):
         )
         
     def play_audio(self):
-        data = self.wf.readframes(self.format.frame_size)
-        if not data:
+        data = self.wf.read(self.format.frame_size, dtype=self.format.dtype)
+        if len(data) == 0:
             if self.loop:
-                self.wf.rewind()
-                data = self.wf.readframes(self.format.frame_size)
+                self.wf.seek(0)
+                data = self.wf.read(self.format.frame_size, dtype=self.format.dtype)
             else:
                 self.get_logger().info("Playback finished.")
                 self.timer.cancel()
@@ -82,7 +82,7 @@ class AudioPlaybackNode(Node):
         audio_bytes = audio.astype(self.format.dtype).tobytes()
         msg = AudioStream()
         msg.stamp = self.get_clock().now().to_msg()
-        msg.data = list(audio_bytes)  # still bytes, but packed as list of ints
+        msg.data = list(audio_bytes)  
 
         self.audio_publisher.publish(msg)
     

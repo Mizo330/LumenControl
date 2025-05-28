@@ -14,10 +14,16 @@ from audio_stream_msgs.srv import AudioPlaybackControl
 from rcl_interfaces.srv import SetParameters
 from rclpy.topic_endpoint_info import TopicEndpointInfo
 from std_msgs.msg import Float32
+from lumen_msgs.msg import AudioFeatures
+from collections import deque
+
 class RosWorker(QThread):
     
     topics_updated = pyqtSignal(list)
     audio_signal = pyqtSignal(AudioStream)
+    bassFeatures = pyqtSignal(AudioFeatures)
+    midFeatures = pyqtSignal(AudioFeatures)    
+    highFeautres = pyqtSignal(AudioFeatures)
     
     def __init__(self):
         super().__init__()
@@ -30,9 +36,22 @@ class RosWorker(QThread):
         self.volume_pub = self.node.create_publisher(Float32,"/audio/output_gain",10)
         self.node.get_logger().info("Wating for input node.")
         self.playback_srv.wait_for_service()
-        
+
+        self.node.create_subscription(AudioFeatures, "/features/bass", self.bassfeatures_cb, 10)
+        self.node.create_subscription(AudioFeatures,"/features/lowmid",self.midfeatures_cb, 10)
+        self.node.create_subscription(AudioFeatures, "/features/high", self.highfeatures_cb,10)
+                
         self.audio_node_name = self.get_input_node_name()
         self.node.create_timer(1,self.update_topic_list)
+        
+    def bassfeatures_cb(self, msg:AudioFeatures):
+        self.bassFeatures.emit(msg)
+        
+    def midfeatures_cb(self, msg:AudioFeatures):
+        self.midFeatures.emit(msg)
+        
+    def highfeatures_cb(self,msg:AudioFeatures):
+        self.highFeautres.emit(msg)
 
     def update_topic_list(self):
         topics = self.node.get_topic_names_and_types()
@@ -109,6 +128,22 @@ class AudioSelectorApp(QMainWindow):
         self.worker.update_topic_list()
         self.control_pressed.connect(self.worker.play_pause_cb)
         self.volumeChanged.connect(self.worker.publish_gain)
+        self.worker.bassFeatures.connect(self.update_bass_fp)
+        #self.worker.midFeatures.connect(self.update_lowmid_fp)
+        #self.worker.highFeautres.connect(self.update_high_fp)
+                
+        channels = { "high", "lowmid", "bass" }
+        # Create history buffers dynamically
+        self.rms_history = {}
+        self.zcr_history = {}
+        self.zcr_z_history = {}
+        self.rms_z_history = {}
+    
+        for band in channels:
+            self.rms_history[band] = deque(maxlen=300)
+            self.zcr_history[band] = deque(maxlen=300)
+            self.rms_z_history[band] = deque(maxlen=300)
+            self.zcr_z_history[band] = deque(maxlen=300)
 
     def init_ui(self):
         central = QWidget()
@@ -148,6 +183,22 @@ class AudioSelectorApp(QMainWindow):
         volume_layout.addWidget(self.volume_label)
 
         self.volume_slider.valueChanged.connect(self._on_slider_change)
+        
+        self.bass_feature_plot = pg.PlotWidget()
+        self.bass_feature_plot.setTitle("Bass Features")
+        
+        self.med_feature_plot = pg.PlotWidget()
+        self.med_feature_plot.setTitle("Lowmid Features")
+        
+        self.high_feature_plot = pg.PlotWidget()
+        self.high_feature_plot.setTitle("High features")
+        
+        plusfeatures = QHBoxLayout()
+        plusfeatures.addWidget(self.med_feature_plot)
+        plusfeatures.addWidget(self.high_feature_plot)
+
+        self.z_scores_plot = pg.PlotWidget()
+        self.z_scores_plot.setTitle("Bass z-scores")
 
         layout.addWidget(self.file_label)
         layout.addWidget(self.file_edit)
@@ -158,7 +209,10 @@ class AudioSelectorApp(QMainWindow):
         layout.addLayout(volume_layout)
         layout.addWidget(self.output_label)
         layout.addWidget(self.plot_widget)
-
+        layout.addWidget(self.bass_feature_plot)
+        #layout.addLayout(plusfeatures)
+        layout.addWidget(self.z_scores_plot)
+        
         central.setLayout(layout)
         self.setCentralWidget(central)
 
@@ -191,6 +245,91 @@ class AudioSelectorApp(QMainWindow):
         else:
             self.topic_dropdown.setCurrentIndex(0 if topics else -1)  # Default to first item if available
 
+    def update_bass_fp(self, features: AudioFeatures):
+        # Append current features
+        self.rms_history["bass"].append(features.rms)
+        self.zcr_history["bass"].append(features.zcr)
+        self.zcr_z_history["bass"].append(features.zcr_z_score)
+        self.rms_z_history["bass"].append(features.rms_z_score)
+        rms_array = np.fromiter(self.rms_history["bass"], dtype=np.float32)
+        zcr_array = np.fromiter(self.zcr_history["bass"], dtype=np.float32)
+        zcr_z_array = np.fromiter(self.zcr_z_history["bass"], dtype=np.float32)
+        rms_z_array = np.fromiter(self.rms_z_history["bass"], dtype=np.float32)
+
+        x = list(range(len(rms_array)))
+        # Clear the plot
+        # self.bass_feature_plot.clear()
+        # # Plot RMS and ZCR
+        # rms_curve = self.bass_feature_plot.plot(x, rms_array, pen=pg.mkPen('g', width=2), name='RMS')
+        # zcr_curve = self.bass_feature_plot.plot(x, zcr_array, pen=pg.mkPen('r', width=2), name='ZCR')
+        
+        self.z_scores_plot.clear()
+        self.z_scores_plot.setYRange(-5, 5, padding=0)
+
+        rms_z_curve = self.z_scores_plot.plot(x, rms_z_array, pen=pg.mkPen('b', width=3), name='RMS_z')
+        zcr_z_curve = self.z_scores_plot.plot(x, zcr_z_array, pen=pg.mkPen('w', width=3), name='ZCR_z')
+        diff = self.z_scores_plot.plot(x, rms_z_array-zcr_z_array, pen=pg.mkPen('g', width=3), name='dif')
+        zero_line = pg.InfiniteLine(pos=0, angle=0, pen=pg.mkPen('r', width=1))
+        self.z_scores_plot.addItem(zero_line)
+        
+        # Add legend if not already present
+        if not hasattr(self, 'bass_legend'):
+            self.bass_legend = self.bass_feature_plot.addLegend()
+        else:
+            self.bass_legend.clear()  # Clear previous legend entries
+        # Add legend if not already present
+        if not hasattr(self, 'z_legend'):
+            self.z_legend = self.z_scores_plot.addLegend()
+        else:
+            self.z_legend.clear()  # Clear previous legend entries
+        # self.bass_legend.addItem(rms_curve, 'RMS')
+        # self.bass_legend.addItem(zcr_curve, 'ZCR')   
+        self.z_legend.addItem(rms_z_curve, 'RMS Z-score')   
+        self.z_legend.addItem(zcr_z_curve, 'ZCR Z-score')   
+        self.z_legend.addItem(diff,"Diff")
+
+    def update_lowmid_fp(self, features:AudioFeatures):
+        self.rms_history["lowmid"].append(features.rms)
+        self.zcr_history["lowmid"].append(features.zcr)
+        rms_array = np.fromiter(self.rms_history["lowmid"], dtype=np.float32)
+        zcr_array = np.fromiter(self.zcr_history["lowmid"], dtype=np.float32)
+
+        x = list(range(len(rms_array)))
+        # Clear the plot
+        self.med_feature_plot.clear()
+        # Plot RMS and ZCR
+        rms_curve = self.med_feature_plot.plot(x, rms_array, pen=pg.mkPen('g', width=2), name='RMS')
+        zcr_curve = self.med_feature_plot.plot(x, zcr_array, pen=pg.mkPen('r', width=2), name='ZCR')
+        # Add legend if not already present
+        if not hasattr(self, 'med_legend'):
+            self.med_legend = self.med_feature_plot.addLegend()
+        else:
+            self.med_legend.clear()  # Clear previous legend entries
+
+        self.med_legend.addItem(rms_curve, 'RMS')
+        self.med_legend.addItem(zcr_curve, 'ZCR')   
+        
+    def update_high_fp(self, features:AudioFeatures):
+        self.rms_history["high"].append(features.rms)
+        self.zcr_history["high"].append(features.zcr)
+        rms_array = np.fromiter(self.rms_history["high"], dtype=np.float32)
+        zcr_array = np.fromiter(self.zcr_history["high"], dtype=np.float32)
+        
+        x = list(range(len(rms_array)))
+        # Clear the plot
+        self.high_feature_plot.clear()
+        # Plot RMS and ZCR
+        rms_curve = self.high_feature_plot.plot(x, rms_array, pen=pg.mkPen('g', width=2), name='RMS')
+        zcr_curve = self.high_feature_plot.plot(x, zcr_array, pen=pg.mkPen('r', width=2), name='ZCR')
+        # Add legend if not already present
+        if not hasattr(self, 'high_legend'):
+            self.high_legend = self.high_feature_plot.addLegend()
+        else:
+            self.high_legend.clear()  # Clear previous legend entries
+
+        self.high_legend.addItem(rms_curve, 'RMS')
+        self.high_legend.addItem(zcr_curve, 'ZCR') 
+        
     def set_parameter(self, node_name, name, value):
         param = Parameter(name=name, value=value)
         self.worker.set_parameters_via_service(node_name, [param.to_parameter_msg()])
@@ -224,11 +363,17 @@ class AudioSelectorApp(QMainWindow):
 
         self.volume_label.setText(f"Volume: {int(norm_pos * 100)}%")
         self.volumeChanged.emit(norm_pos)
+        
 def main():
     app = QApplication(sys.argv)
     window = AudioSelectorApp()
     window.show()
-    sys.exit(app.exec_())
+    try:
+        app.exec_()
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt received. Closing application...")
+        app.quit()
+
 
 
 if __name__ == '__main__':

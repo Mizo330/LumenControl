@@ -1,8 +1,7 @@
 import numpy as np
-import pyaudio
 import threading
 from beat_this.inference import Audio2Beats
-import torch  # Added import for torch
+import math
 from collections import deque
 import rclpy
 from rclpy.node import Node
@@ -10,7 +9,7 @@ from rclpy import time
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time
 from audio_stream_msgs.msg import AudioStream, AudioFormat
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Int16
 
 class BeatDetector(Node):
 
@@ -27,12 +26,15 @@ class BeatDetector(Node):
         self.buffer = deque(maxlen= self.format.sample_rate * 5)
         self.current_stamp = rclpy.time.Time()
         self.last_beat = rclpy.time.Time()
+        self.recent_beats = deque(maxlen=40)  #TODO make this a param
+        self.bpm = 0.0
         self.lock = threading.Lock()
         
         self.beatThis = Audio2Beats("/home/appuser/lumencontrol/src/my_packages/lumencontrol/checkpoints/final0.ckpt", "cuda")
 
         self.create_subscription(AudioStream,"/audio/input_raw",self.audio_callback,10)
         self.beat_publisher = self.create_publisher(Bool, "/lumenctrl/beat",10)
+        self.bpm_publisher = self.create_publisher(Int16,"/audio/bpm",10)
         # Process buffer periodically (e.g., 10 Hz)
         self.create_timer(0.05, self.process_buffer)
         
@@ -60,31 +62,33 @@ class BeatDetector(Node):
         delta = self.get_clock().now() - start
         is_new_beat = self.filter_for_new_beat(beats,current_stamp)
         self.get_logger().debug(f"Beat processing time: {delta} s")
-        if is_new_beat:
-            self.beat_publisher.publish(Bool(data=True))
-        #self.get_logger().info(f"beats:{beats}")
+        self.get_logger().debug(f"beats:{beats}")
         
     def filter_for_new_beat(self, beats: np.ndarray, timestamp) -> bool:
         """
         Filters for the latest beat and checks if it's newer than self.last_beat.
-        If yes, updates self.last_beat and returns True.
+        If yes, updates self.last_beat and returns True. Also calculates BPM from last N beats.
         """
         if len(beats) == 0:
             return False
-        tol_ns = int(0.2 * 1e9) #lets have a 0.2s tolerance window -> cut at 300BPM
-        latest_beat_sec = beats[-1]
 
-        # Convert beat offset (in seconds) to nanoseconds
+        tol_ns = int(0.3 * 1e9)  # 0.2s tolerance -> 200 BPM max
+        latest_beat_sec = beats[-1]
         beat_time_ns = timestamp.nanoseconds + int(latest_beat_sec * 1e9)
         beat_time = rclpy.time.Time(nanoseconds=beat_time_ns)
 
-        # If beat is newer than last published one
-        if beat_time.nanoseconds > self.last_beat.nanoseconds+tol_ns:
-            self.get_logger().info(f"New beat at: {beat_time.nanoseconds / 1e9:.2f}s")
+        if beat_time.nanoseconds > self.last_beat.nanoseconds + tol_ns:
             self.last_beat = beat_time
-            return True
-
-        return False
+            self.recent_beats.append(beat_time.nanoseconds)
+            self.beat_publisher.publish(Bool(data=True))
+            # Calculate BPM from recent beats
+            if len(self.recent_beats) >= 2:
+                intervals_sec = np.diff(self.recent_beats) / 1e9  # Convert ns to sec
+                avg_interval = np.mean(intervals_sec)
+                if avg_interval > 0:
+                    self.bpm = 60.0 / avg_interval
+                    self.get_logger().debug(f"Estimated BPM: {self.bpm:.2f}")
+                    self.bpm_publisher.publish(Int16(data=round(self.bpm)))
             
     def _audio_format_cb(self, msg: AudioFormat):
         self.format = msg

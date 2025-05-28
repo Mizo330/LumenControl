@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    # #Filter setup: Name, middle frequency, and gain, in order!
+    filter_names: [Bass, LowMid, Mid, HighMid, High]
+    filter_frequencies: [80, 220, 1000, 3500, 8000]
+    filter_gains: [1.0, 1.0, 2.0, 2.0, 3.0]
